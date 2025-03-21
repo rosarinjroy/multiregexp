@@ -12,7 +12,7 @@ One option is to form a single regular expression with OR ("|") between each one
 
 Another option is to form a single regular expression, but make each one of the input regexp as its own submatch. Instead of using "|" to concatenate, we can use ")|(" to concatenate. So we will be matching "(regexp1)|(regexp2)|(regexp3)". In PCRE world, we call the inner matches as capture groups, where as in Golang world we call them as submatches. They mean the same.
 
-Golang's `regexp` package has a nice function called (`FindAllSubmatchIndex`)[https://pkg.go.dev/regexp#Regexp.FindAllSubmatchIndex]. This function returns `[][]int`. The outer slice has as many elements as there are matches. The inner array represents the whole match and submatches. The elements in the inner array are to be interpreted as below:
+Golang's `regexp` package has a nice function called [`FindAllSubmatchIndex`](https://pkg.go.dev/regexp#Regexp.FindAllSubmatchIndex). This function returns `[][]int`. The outer slice has as many elements as there are matches. The inner array represents the whole match and submatches. The elements in the inner array are to be interpreted as below:
 
 - The first pair of integers always represent the full match. The first element of the pair represents the starting position and the second element of the pair represents the length of the match.
 - Each subsequent pair represents a subgroup. They are to be interpreted as starting position and length of the match.
