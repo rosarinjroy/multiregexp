@@ -61,20 +61,50 @@ func BenchmarkParallelReplacerWithMatch(b *testing.B) {
 	replacer := NewParallelReplacer()
 	fromFmtStr := fmt.Sprintf("foo%%0%dd", numDigits)
 	toFmtStr := fmt.Sprintf("bar%%0%dd", numDigits)
-	fmt.Println("Input:", b.N)
+	// fmt.Println("Input:", b.N)
 	for i := 0; i < b.N; i++ {
 		from := fmt.Sprintf(fromFmtStr, i)
 		to := fmt.Sprintf(toFmtStr, i+1)
 		replacer.AddReplacement(from, to)
 	}
 	replacer.AddReplacement("Charles", "XXXXXXX")
-	replacer.PrintStats()
+	// replacer.PrintStats()
 	inputText, err := os.ReadFile("oliver_twist.txt")
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	outputText := replacer.ReplaceAll(inputText)
+	expected, _ := os.ReadFile("oliver_twist_XXXXXXX.golden")
+	if !slices.Equal(expected, outputText) {
+		b.Fatalf("Expected input and output to be the same")
+	}
+
+}
+
+func BenchmarkParallelReplacerWithMatchV2(b *testing.B) {
+	if b.N > 1000000 {
+		b.Skipf("Will not run the benchmark for N > 10000, N = %d", b.N)
+	}
+
+	numDigits := int(math.Ceil(math.Log10(float64(b.N))))
+	replacer := NewParallelReplacer()
+	fromFmtStr := fmt.Sprintf("foo%%0%dd", numDigits)
+	toFmtStr := fmt.Sprintf("bar%%0%dd", numDigits)
+	// fmt.Println("Input:", b.N)
+	for i := 0; i < b.N; i++ {
+		from := fmt.Sprintf(fromFmtStr, i)
+		to := fmt.Sprintf(toFmtStr, i+1)
+		replacer.AddReplacement(from, to)
+	}
+	replacer.AddReplacement("Charles", "XXXXXXX")
+	// replacer.PrintStats()
+	inputText, err := os.ReadFile("oliver_twist.txt")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	outputText := replacer.ReplaceAllV2(inputText)
 	expected, _ := os.ReadFile("oliver_twist_XXXXXXX.golden")
 	if !slices.Equal(expected, outputText) {
 		b.Fatalf("Expected input and output to be the same")
