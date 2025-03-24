@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+const NUM_REGEXEX_TO_BENCHMARK = 1000
+
 func TestMultiRegexp(t *testing.T) {
 	replacer := NewMultiRegexp()
 	replacer.AddReplacement("foo", "bar")
@@ -33,11 +35,11 @@ func TestMultiRegexpWithoutMatch(t *testing.T) {
 }
 
 func BenchmarkMultiRegexpNoMatch(b *testing.B) {
-	numDigits := int(math.Ceil(math.Log10(float64(b.N))))
+	numDigits := int(math.Ceil(math.Log10(float64(NUM_REGEXEX_TO_BENCHMARK))))
 	replacer := NewMultiRegexp()
 	fromFmtStr := fmt.Sprintf("foo%%0%dd", numDigits)
 	toFmtStr := fmt.Sprintf("bar%%0%dd", numDigits)
-	for i := 0; i < b.N; i++ {
+	for i := 0; i < NUM_REGEXEX_TO_BENCHMARK; i++ {
 		from := fmt.Sprintf(fromFmtStr, i)
 		to := fmt.Sprintf(toFmtStr, i+1)
 		replacer.AddReplacement(from, to)
@@ -47,7 +49,7 @@ func BenchmarkMultiRegexpNoMatch(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.ResetTimer()
-	for range 100 {
+	for range b.N {
 		outputText := replacer.ReplaceAll(inputText)
 		// os.WriteFile(fmt.Sprintf("oliver_twist_%d.txt", i), outputText, 0644)
 		if !slices.Equal(outputText, inputText) {
@@ -56,13 +58,13 @@ func BenchmarkMultiRegexpNoMatch(b *testing.B) {
 	}
 }
 
-func BenchmarkMultiRegexpWithMatch(b *testing.B) {
-	numDigits := int(math.Ceil(math.Log10(float64(b.N))))
+func BenchmarkMultiRegexpUsingOR(b *testing.B) {
+	numDigits := int(math.Ceil(math.Log10(float64(NUM_REGEXEX_TO_BENCHMARK))))
 	replacer := NewMultiRegexp()
 	fromFmtStr := fmt.Sprintf("foo%%0%dd", numDigits)
 	toFmtStr := fmt.Sprintf("bar%%0%dd", numDigits)
 	// fmt.Println("Input:", b.N)
-	for i := 0; i < b.N; i++ {
+	for i := 0; i < NUM_REGEXEX_TO_BENCHMARK; i++ {
 		from := fmt.Sprintf(fromFmtStr, i)
 		to := fmt.Sprintf(toFmtStr, i+1)
 		replacer.AddReplacement(from, to)
@@ -74,25 +76,24 @@ func BenchmarkMultiRegexpWithMatch(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	outputText := replacer.ReplaceAll(inputText)
-	expected, _ := os.ReadFile("oliver_twist_XXXXXXX.golden")
-	if !slices.Equal(expected, outputText) {
-		b.Fatalf("Expected input and output to be the same")
+	b.ResetTimer()
+	for range b.N {
+		outputText := replacer.ReplaceAll(inputText)
+		expected, _ := os.ReadFile("oliver_twist_XXXXXXX.golden")
+		if !slices.Equal(expected, outputText) {
+			b.Fatalf("Expected input and output to be the same")
+		}
 	}
-
 }
 
-func BenchmarkParallelReplacerWithMatchV2(b *testing.B) {
-	if b.N > 1000000 {
-		b.Skipf("Will not run the benchmark for N > 10000, N = %d", b.N)
-	}
-
-	numDigits := int(math.Ceil(math.Log10(float64(b.N))))
+func BenchmarkMultiRegexpUsingORWithMemoization(b *testing.B) {
+	numDigits := int(math.Ceil(math.Log10(float64(NUM_REGEXEX_TO_BENCHMARK))))
 	replacer := NewMultiRegexp()
+	replacer.Memoize(true)
 	fromFmtStr := fmt.Sprintf("foo%%0%dd", numDigits)
 	toFmtStr := fmt.Sprintf("bar%%0%dd", numDigits)
 	// fmt.Println("Input:", b.N)
-	for i := 0; i < b.N; i++ {
+	for i := 0; i < NUM_REGEXEX_TO_BENCHMARK; i++ {
 		from := fmt.Sprintf(fromFmtStr, i)
 		to := fmt.Sprintf(toFmtStr, i+1)
 		replacer.AddReplacement(from, to)
@@ -104,10 +105,68 @@ func BenchmarkParallelReplacerWithMatchV2(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	outputText := replacer.ReplaceAllV2(inputText)
-	expected, _ := os.ReadFile("oliver_twist_XXXXXXX.golden")
-	if !slices.Equal(expected, outputText) {
-		b.Fatalf("Expected input and output to be the same")
+	b.ResetTimer()
+	for range b.N {
+		outputText := replacer.ReplaceAll(inputText)
+		expected, _ := os.ReadFile("oliver_twist_XXXXXXX.golden")
+		if !slices.Equal(expected, outputText) {
+			b.Fatalf("Expected input and output to be the same")
+		}
+	}
+}
+
+func BenchmarkMultiRegexpUsingSubmatch(b *testing.B) {
+	numDigits := int(math.Ceil(math.Log10(float64(NUM_REGEXEX_TO_BENCHMARK))))
+	replacer := NewMultiRegexpUsingSubmatch()
+	fromFmtStr := fmt.Sprintf("foo%%0%dd", numDigits)
+	toFmtStr := fmt.Sprintf("bar%%0%dd", numDigits)
+	// fmt.Println("Input:", b.N)
+	for i := 0; i < NUM_REGEXEX_TO_BENCHMARK; i++ {
+		from := fmt.Sprintf(fromFmtStr, i)
+		to := fmt.Sprintf(toFmtStr, i+1)
+		replacer.AddReplacement(from, to)
+	}
+	replacer.AddReplacement("Charles", "XXXXXXX")
+	// replacer.PrintStats()
+	inputText, err := os.ReadFile("oliver_twist.txt")
+	if err != nil {
+		b.Fatal(err)
 	}
 
+	b.ResetTimer()
+	for range b.N {
+		outputText := replacer.ReplaceAll(inputText)
+		expected, _ := os.ReadFile("oliver_twist_XXXXXXX.golden")
+		if !slices.Equal(expected, outputText) {
+			b.Fatalf("Expected input and output to be the same")
+		}
+	}
+}
+
+func BenchmarkParallelReplacerUsingBruteForce(b *testing.B) {
+	numDigits := int(math.Ceil(math.Log10(float64(NUM_REGEXEX_TO_BENCHMARK))))
+	replacer := NewMultiRegexpUsingBruteForce()
+	fromFmtStr := fmt.Sprintf("foo%%0%dd", numDigits)
+	toFmtStr := fmt.Sprintf("bar%%0%dd", numDigits)
+	// fmt.Println("Input:", b.N)
+	for i := 0; i < NUM_REGEXEX_TO_BENCHMARK; i++ {
+		from := fmt.Sprintf(fromFmtStr, i)
+		to := fmt.Sprintf(toFmtStr, i+1)
+		replacer.AddReplacement(from, to)
+	}
+	replacer.AddReplacement("Charles", "XXXXXXX")
+	// replacer.PrintStats()
+	inputText, err := os.ReadFile("oliver_twist.txt")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		outputText := replacer.ReplaceAll(inputText)
+		expected, _ := os.ReadFile("oliver_twist_XXXXXXX.golden")
+		if !slices.Equal(expected, outputText) {
+			b.Fatalf("Expected input and output to be the same")
+		}
+	}
 }

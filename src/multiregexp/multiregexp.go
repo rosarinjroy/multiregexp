@@ -37,15 +37,30 @@ type MultiRegexp struct {
 func NewMultiRegexp() *MultiRegexp {
 	retVal := &MultiRegexp{}
 	retVal.algorithm = MultiRegexpAlgorithmOR
+	retVal.mustInitialize = true
 	return retVal
 }
 
 func NewMultiRegexpUsingSubmatch() *MultiRegexp {
-	return &MultiRegexp{}
+	retVal := &MultiRegexp{}
+	retVal.algorithm = MultiRegexpAlgorithmSubmatch
+	retVal.mustInitialize = true
+	return retVal
 }
 
 func NewMultiRegexpUsingBruteForce() *MultiRegexp {
-	return &MultiRegexp{}
+	retVal := &MultiRegexp{}
+	retVal.algorithm = MultiRegexpAlgorithmBruteForce
+	retVal.mustInitialize = true
+	return retVal
+}
+
+func (p *MultiRegexp) Memoize(memoize bool) {
+	if p.algorithm == MultiRegexpAlgorithmOR {
+		p.memoize = memoize
+	} else {
+		panic(fmt.Sprintf("Memize is only supported for OR algorithm, not %s", p.algorithm))
+	}
 }
 
 // Adds a new replacement to the list of replacements.
@@ -55,25 +70,27 @@ func (p *MultiRegexp) AddReplacement(old, new string) {
 	p.mustInitialize = true
 }
 
-func (p *MultiRegexp) Compile() {
+func (p *MultiRegexp) initializeIfNeeded() {
 	if !p.mustInitialize {
 		return
 	}
 
 	switch p.algorithm {
 	case MultiRegexpAlgorithmOR:
-		p.CompileUsingOR()
+		p.CompileForOR()
 	case MultiRegexpAlgorithmSubmatch:
-		p.CompileUsingSubmatch()
+		p.CompileForSubmatch()
 	case MultiRegexpAlgorithmBruteForce:
-		p.CompileUsingBruteForce()
+		p.CompileForBruteForce()
+	default:
+		panic(fmt.Sprintf("Unknown algorithm: %s", p.algorithm))
 	}
+	p.mustInitialize = false
 }
 
-func (p *MultiRegexp) CompileUsingOR() {
-	if p.compiledRegexWithSubmatch == nil {
-		p.compiledRegexWithSubmatch = regexp.MustCompile(strings.Join(p.fromRegexes, "|"))
-	}
+func (p *MultiRegexp) CompileForOR() {
+	p.compiledRegex = regexp.MustCompile(strings.Join(p.fromRegexes, "|"))
+
 	for _, old := range p.fromRegexes {
 		p.compiledRegexList = append(p.compiledRegexList, regexp.MustCompile(old))
 	}
@@ -82,13 +99,13 @@ func (p *MultiRegexp) CompileUsingOR() {
 	}
 }
 
-func (p *MultiRegexp) CompileUsingSubmatch() {
+func (p *MultiRegexp) CompileForSubmatch() {
 	if p.compiledRegex == nil {
 		p.compiledRegex = regexp.MustCompile("(" + strings.Join(p.fromRegexes, ")|(") + ")")
 	}
 }
 
-func (p *MultiRegexp) CompileUsingBruteForce() {
+func (p *MultiRegexp) CompileForBruteForce() {
 	if p.compiledRegexList == nil {
 		for _, old := range p.fromRegexes {
 			p.compiledRegexList = append(p.compiledRegexList, regexp.MustCompile(old))
@@ -96,24 +113,26 @@ func (p *MultiRegexp) CompileUsingBruteForce() {
 	}
 }
 
-func (p *MultiRegexp) PrintStats() {
-	fmt.Println("FromRegexes:", len(p.fromRegexes))
-	fmt.Println("ToStrings:", len(p.toStrings))
-}
+// func (p *MultiRegexp) PrintStats() {
+// 	fmt.Println("FromRegexes:", len(p.fromRegexes))
+// 	fmt.Println("ToStrings:", len(p.toStrings))
+// }
 
 func (p *MultiRegexp) ReplaceAll(text []byte) []byte {
+	p.initializeIfNeeded()
+
 	switch p.algorithm {
 	case MultiRegexpAlgorithmOR:
-		return p.ReplaceAllUsingOR(text)
+		return p.replaceAllUsingOR(text)
 	case MultiRegexpAlgorithmSubmatch:
-		return p.ReplaceAllUsingSubmatch(text)
+		return p.replaceAllUsingSubmatch(text)
 	case MultiRegexpAlgorithmBruteForce:
-		return p.ReplaceAllUsingBruteForce(text)
+		return p.replaceAllUsingBruteForce(text)
 	}
 	panic(fmt.Sprintf("Unknown algorithm: %s", p.algorithm))
 }
 
-func (p *MultiRegexp) ReplaceAllUsingOR(text []byte) []byte {
+func (p *MultiRegexp) replaceAllUsingOR(text []byte) []byte {
 	retVal := make([]byte, 0, len(text))
 	matches := p.compiledRegex.FindAllSubmatchIndex(text, -1)
 	// fmt.Println(re.NumSubexp())
@@ -149,7 +168,7 @@ func (p *MultiRegexp) ReplaceAllUsingOR(text []byte) []byte {
 	return retVal
 }
 
-func (p *MultiRegexp) ReplaceAllUsingSubmatch(text []byte) []byte {
+func (p *MultiRegexp) replaceAllUsingSubmatch(text []byte) []byte {
 	retVal := make([]byte, 0, len(text))
 	matches := p.compiledRegex.FindAllSubmatchIndex(text, -1)
 
@@ -173,7 +192,7 @@ func (p *MultiRegexp) ReplaceAllUsingSubmatch(text []byte) []byte {
 	return retVal
 }
 
-func (p *MultiRegexp) ReplaceAllUsingBruteForce(text []byte) []byte {
+func (p *MultiRegexp) replaceAllUsingBruteForce(text []byte) []byte {
 	var retVal []byte
 
 	for i := range p.compiledRegexList {
