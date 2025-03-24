@@ -1,5 +1,3 @@
-*** WIP ***
-
 # Problem Statement
 I had a need to find and replace a set of regular expression with their respective replacement strings. These replacements are specified in the form of rules. For e.g.
 
@@ -59,4 +57,3 @@ ok  	rosarinjroy.github.com/multiregexp/src/multiregexp	396.467s
 # Limitations
 
 - This library does not check if the input expression itself has any submatches yet.
-- If the input has any
