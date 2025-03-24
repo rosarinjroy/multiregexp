@@ -12,7 +12,7 @@ I had a need to find and replace a set of regular expression with their respecti
 The objective is to design the most efficient solution. I could come up with three different approaches that are explained below. This library has code, tests and benchmarks for all the three approaches.
 
 # Approach 1 - Single combined regex without submatches
-First option is to form a combined regular expression with OR ("|") between each one of the search patterns. So we will be matching "regexp1|regexp2|regexp3". This method will be faster than multi-pass matching. But this method will require us to identify which one of the rules actually matched, after we receive a combined regex match. This will require us to do a linear search in the list of rules after every combined regex match.
+First option is to form a combined regular expression with OR ("|") between each one of the search patterns. So we will be matching "regexp1|regexp2|regexp3". This method will go over the input only once (single pass). But this method will require us to identify which one of the rules actually matched, after we receive a combined regex match. This means we need to do a linear search in the list of rules after every combined regex match.
 
 If the number of actual matched strings will be finite, then we can speed up this algorithm by memoization.
 
