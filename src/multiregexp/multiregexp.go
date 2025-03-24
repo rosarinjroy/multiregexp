@@ -28,8 +28,8 @@ type MultiRegexp struct {
 	memoize           bool
 	memoizedMatches   map[string][]byte
 
-	// Fields used for submatch based replacement
-	compiledRegexWithSubmatch *regexp.Regexp
+	// For submatch based replacement, we will use the compiledRegex
+	// to store the compiled regex with submatch.
 
 	// For brute force method, we will use the compiledRegexList
 }
@@ -55,12 +55,20 @@ func NewMultiRegexpUsingBruteForce() *MultiRegexp {
 	return retVal
 }
 
+func (p *MultiRegexp) GetAlgorithm() MultiRegexpAlgorithm {
+	return p.algorithm
+}
+
 func (p *MultiRegexp) Memoize(memoize bool) {
 	if p.algorithm == MultiRegexpAlgorithmOR {
 		p.memoize = memoize
 	} else {
 		panic(fmt.Sprintf("Memize is only supported for OR algorithm, not %s", p.algorithm))
 	}
+}
+
+func (p *MultiRegexp) IsMemoized() bool {
+	return p.memoize
 }
 
 // Adds a new replacement to the list of replacements.
@@ -77,18 +85,18 @@ func (p *MultiRegexp) initializeIfNeeded() {
 
 	switch p.algorithm {
 	case MultiRegexpAlgorithmOR:
-		p.CompileForOR()
+		p.compileForOR()
 	case MultiRegexpAlgorithmSubmatch:
-		p.CompileForSubmatch()
+		p.compileForSubmatch()
 	case MultiRegexpAlgorithmBruteForce:
-		p.CompileForBruteForce()
+		p.compileForBruteForce()
 	default:
 		panic(fmt.Sprintf("Unknown algorithm: %s", p.algorithm))
 	}
 	p.mustInitialize = false
 }
 
-func (p *MultiRegexp) CompileForOR() {
+func (p *MultiRegexp) compileForOR() {
 	p.compiledRegex = regexp.MustCompile(strings.Join(p.fromRegexes, "|"))
 
 	for _, old := range p.fromRegexes {
@@ -99,13 +107,13 @@ func (p *MultiRegexp) CompileForOR() {
 	}
 }
 
-func (p *MultiRegexp) CompileForSubmatch() {
+func (p *MultiRegexp) compileForSubmatch() {
 	if p.compiledRegex == nil {
 		p.compiledRegex = regexp.MustCompile("(" + strings.Join(p.fromRegexes, ")|(") + ")")
 	}
 }
 
-func (p *MultiRegexp) CompileForBruteForce() {
+func (p *MultiRegexp) compileForBruteForce() {
 	if p.compiledRegexList == nil {
 		for _, old := range p.fromRegexes {
 			p.compiledRegexList = append(p.compiledRegexList, regexp.MustCompile(old))
@@ -143,16 +151,16 @@ func (p *MultiRegexp) replaceAllUsingOR(text []byte) []byte {
 		if lastIndex < match[0] {
 			retVal = append(retVal, text[lastIndex:match[0]]...)
 		}
-		for i := range p.compiledRegexList {
-			if p.memoize {
-				replacement, ok := p.memoizedMatches[string(text[match[0]:match[1]])]
-				if ok {
-					retVal = append(retVal, replacement...)
-					lastIndex = match[1]
-					break
-				}
+		if p.memoize {
+			replacement, ok := p.memoizedMatches[string(text[match[0]:match[1]])]
+			if ok {
+				retVal = append(retVal, replacement...)
+				lastIndex = match[1]
+				continue
 			}
+		}
 
+		for i := range p.compiledRegexList {
 			if p.compiledRegexList[i].Match(text[match[0]:match[1]]) {
 				replacement := []byte(p.toStrings[i])
 				retVal = append(retVal, replacement...)
@@ -177,7 +185,7 @@ func (p *MultiRegexp) replaceAllUsingSubmatch(text []byte) []byte {
 		// fmt.Println(match)
 		for i := 2; i < len(match); i += 2 {
 			if match[i] == -1 {
-				break
+				continue
 			}
 			if lastIndex < match[i] {
 				retVal = append(retVal, text[lastIndex:match[i]]...)
@@ -185,7 +193,6 @@ func (p *MultiRegexp) replaceAllUsingSubmatch(text []byte) []byte {
 			replacement := []byte(p.toStrings[(i-2)/2])
 			retVal = append(retVal, replacement...)
 			lastIndex = match[i+1]
-			break
 		}
 	}
 	retVal = append(retVal, text[lastIndex:]...)

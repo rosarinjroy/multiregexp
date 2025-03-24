@@ -9,18 +9,14 @@ I had a need to find and replace a set of regular expression with their respecti
     Rule 2: Replace "regexp3" with "STRING3"
 ```
 
-The objective is to design the most efficient solution.
+The objective is to design the most efficient solution. I could come up with three different approaches that are explained below. This library has code, tests and benchmarks for all the three approaches.
 
-# Approach 1 - Multi-pass Replace
-
-If we process the rules one at a time, we will be going over the input string as many times as the number of the rules. This will be inefficient if the number of rules is vary large. I didn't spend time to implement this solution.
-
-# Approach 2 - Single combined regex without submatches
+# Approach 1 - Single combined regex without submatches
 Another option is to form a combined regular expression with OR ("|") between each one of the search patterns. So we will be matching "regexp1|regexp2|regexp3". This method will be faster than multi-pass matching. But this method will require us to identify which one of the rules actually matched, after we receive a combined regex match. This will require us to do a linear search in the list of rules after every combined regex match.
 
 If the number of actual matched strings will be finite, then we can speed up this algorithm by memoization.
 
-# Approach 3 - Single combined regex with submatches
+# Approach 2 - Single combined regex with submatches
 
 The last option we will explore is to form a combined regular expression, but make each one of the input regexp as its own submatch. Instead of using "|" to concatenate, we can use ")|(" to concatenate. So we will be matching "(regexp1)|(regexp2)|(regexp3)". In PCRE world, we call the inner matches as capture groups, where as in Golang world we call them as submatches. They mean the same.
 
@@ -33,29 +29,32 @@ So by iterating over the submatches, we will know which replacement should be us
 
 `regexp` package is based on the RE2 library. A nice property of the RE2 library is that it guarantees linear time to match any regular expression (once it is compiled). This property guarantees safety.
 
+# Approach 3 - Brute force aka multi-pass replace
+
+If we process the rules one at a time, we will be going over the input string as many times as the number of the rules. This will be inefficient if the number of rules is vary large.
+
 # Benchmark results
 
 ```
-$ go test -benchmem -run='^$' -bench '^BenchmarkParallelReplacerWithMatchV2$' rosarinjroy.github.com/parallelreplace/src/parallelreplace -v
+$ go test -benchmem -run='^$' -benchtime=5s -bench '^Benchmark' ./src/multiregexp/ -v
 goos: darwin
 goarch: arm64
-pkg: rosarinjroy.github.com/parallelreplace/src/parallelreplace
-BenchmarkParallelReplacerWithMatchV2
-BenchmarkParallelReplacerWithMatchV2-8   	  422474	      2884 ns/op	    3079 B/op	      28 allocs/op
+pkg: rosarinjroy.github.com/multiregexp/src/multiregexp
+BenchmarkMultiRegexpNoMatch
+BenchmarkMultiRegexpNoMatch-8                  	    8610	    706499 ns/op	  958989 B/op	       4 allocs/op
+BenchmarkMultiRegexpUsingOR
+BenchmarkMultiRegexpUsingOR-8                  	     256	  23278466 ns/op	 1930135 B/op	     107 allocs/op
+BenchmarkMultiRegexpUsingORWithMemoization
+BenchmarkMultiRegexpUsingORWithMemoization-8   	     259	  23099182 ns/op	 1925550 B/op	      96 allocs/op
+BenchmarkMultiRegexpUsingSubmatch
+BenchmarkMultiRegexpUsingSubmatch-8            	       1	363420208750 ns/op	37521832 B/op	    8161 allocs/op
+BenchmarkParallelReplacerUsingBruteForce
+BenchmarkParallelReplacerUsingBruteForce-8     	      14	 388919893 ns/op	961567181 B/op	    3567 allocs/op
 PASS
-ok  	rosarinjroy.github.com/parallelreplace/src/parallelreplace	1.658s
-
-$ go test -benchmem -run='^$' -benchtime=5s -bench '^BenchmarkParallelReplacerWithMatch$' rosarinjroy.github.com/parallelreplace/src/parallelreplace -v
-goos: darwin
-goarch: arm64
-pkg: rosarinjroy.github.com/parallelreplace/src/parallelreplace
-BenchmarkParallelReplacerWithMatch
-BenchmarkParallelReplacerWithMatch-8   	     126	  59018498 ns/op	   29529 B/op	      10 allocs/op
-PASS
-ok  	rosarinjroy.github.com/parallelreplace/src/parallelreplace	12.270s
+ok  	rosarinjroy.github.com/multiregexp/src/multiregexp	396.467s
 ```
 
 # Limitations
 
 - This library does not check if the input expression itself has any submatches yet.
-- If the input has any 
+- If the input has any
