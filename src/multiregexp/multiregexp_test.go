@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-func TestParallelReplacer(t *testing.T) {
-	replacer := NewParallelReplacer()
+func TestMultiRegexp(t *testing.T) {
+	replacer := NewMultiRegexp()
 	replacer.AddReplacement("foo", "bar")
 	replacer.AddReplacement("baz", "qux")
 
@@ -20,8 +20,8 @@ func TestParallelReplacer(t *testing.T) {
 	}
 }
 
-func TestParallelReplacerWithoutMatch(t *testing.T) {
-	replacer := NewParallelReplacer()
+func TestMultiRegexpWithoutMatch(t *testing.T) {
+	replacer := NewMultiRegexp()
 	replacer.AddReplacement("foo", "bar")
 	replacer.AddReplacement("baz", "qux")
 
@@ -32,9 +32,9 @@ func TestParallelReplacerWithoutMatch(t *testing.T) {
 	}
 }
 
-func BenchmarkParallelReplacerNoMatch(b *testing.B) {
+func BenchmarkMultiRegexpNoMatch(b *testing.B) {
 	numDigits := int(math.Ceil(math.Log10(float64(b.N))))
-	replacer := NewParallelReplacer()
+	replacer := NewMultiRegexp()
 	fromFmtStr := fmt.Sprintf("foo%%0%dd", numDigits)
 	toFmtStr := fmt.Sprintf("bar%%0%dd", numDigits)
 	for i := 0; i < b.N; i++ {
@@ -56,9 +56,9 @@ func BenchmarkParallelReplacerNoMatch(b *testing.B) {
 	}
 }
 
-func BenchmarkParallelReplacerWithMatch(b *testing.B) {
+func BenchmarkMultiRegexpWithMatch(b *testing.B) {
 	numDigits := int(math.Ceil(math.Log10(float64(b.N))))
-	replacer := NewParallelReplacer()
+	replacer := NewMultiRegexp()
 	fromFmtStr := fmt.Sprintf("foo%%0%dd", numDigits)
 	toFmtStr := fmt.Sprintf("bar%%0%dd", numDigits)
 	// fmt.Println("Input:", b.N)
@@ -88,7 +88,7 @@ func BenchmarkParallelReplacerWithMatchV2(b *testing.B) {
 	}
 
 	numDigits := int(math.Ceil(math.Log10(float64(b.N))))
-	replacer := NewParallelReplacer()
+	replacer := NewMultiRegexp()
 	fromFmtStr := fmt.Sprintf("foo%%0%dd", numDigits)
 	toFmtStr := fmt.Sprintf("bar%%0%dd", numDigits)
 	// fmt.Println("Input:", b.N)

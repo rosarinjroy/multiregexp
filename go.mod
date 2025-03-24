@@ -1,4 +1,4 @@
-module rosarinjroy.github.com/parallelreplace
+module rosarinjroy.github.com/multiregexp
 
 go 1.22.5
 

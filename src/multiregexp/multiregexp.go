@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-type ParallelReplacer struct {
+type MultiRegexp struct {
 	fromRegexes       []string
 	toStrings         []string
 	compiledRegex     *regexp.Regexp
@@ -14,12 +14,12 @@ type ParallelReplacer struct {
 	compiledRegexList []*regexp.Regexp
 }
 
-func NewParallelReplacer() *ParallelReplacer {
-	return &ParallelReplacer{}
+func NewMultiRegexp() *MultiRegexp {
+	return &MultiRegexp{}
 }
 
 // Adds a new replacement to the list of replacements.
-func (p *ParallelReplacer) AddReplacement(old string, new string) {
+func (p *MultiRegexp) AddReplacement(old string, new string) {
 	p.fromRegexes = append(p.fromRegexes, old)
 	p.toStrings = append(p.toStrings, new)
 	p.compiledRegex = nil
@@ -27,13 +27,13 @@ func (p *ParallelReplacer) AddReplacement(old string, new string) {
 	p.compiledRegexList = nil
 }
 
-func (p *ParallelReplacer) Compile() {
+func (p *MultiRegexp) Compile() {
 	if p.compiledRegex == nil {
 		p.compiledRegex = regexp.MustCompile("(" + strings.Join(p.fromRegexes, ")|(") + ")")
 	}
 }
 
-func (p *ParallelReplacer) CompileV2() {
+func (p *MultiRegexp) CompileV2() {
 	if p.compiledRegexV2 == nil {
 		p.compiledRegexV2 = regexp.MustCompile(strings.Join(p.fromRegexes, "|"))
 	}
@@ -43,12 +43,12 @@ func (p *ParallelReplacer) CompileV2() {
 		}
 	}
 }
-func (p *ParallelReplacer) PrintStats() {
+func (p *MultiRegexp) PrintStats() {
 	fmt.Println("FromRegexes:", len(p.fromRegexes))
 	fmt.Println("ToStrings:", len(p.toStrings))
 }
 
-func (p *ParallelReplacer) ReplaceAll(text []byte) []byte {
+func (p *MultiRegexp) ReplaceAll(text []byte) []byte {
 	p.Compile()
 	retVal := make([]byte, 0, len(text))
 	matches := p.compiledRegex.FindAllSubmatchIndex(text, -1)
@@ -72,7 +72,7 @@ func (p *ParallelReplacer) ReplaceAll(text []byte) []byte {
 	return retVal
 }
 
-func (p *ParallelReplacer) ReplaceAllV2(text []byte) []byte {
+func (p *MultiRegexp) ReplaceAllV2(text []byte) []byte {
 	p.CompileV2()
 	retVal := make([]byte, 0, len(text))
 	matches := p.compiledRegexV2.FindAllSubmatchIndex(text, -1)
