@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type MultiRegexpAlgorithm string
@@ -23,10 +24,12 @@ type MultiRegexp struct {
 	mustInitialize bool
 
 	// Fields used for OR based replacement with optional memoization
-	compiledRegex     *regexp.Regexp
-	compiledRegexList []*regexp.Regexp
-	memoize           bool
-	memoizedMatches   map[string][]byte
+	compiledRegex                     *regexp.Regexp
+	compiledRegexList                 []*regexp.Regexp
+	memoize                           bool
+	memoizedMatches                   map[string][]byte
+	compiledMemoizedMatchesRegex      *regexp.Regexp
+	mustRecompileMemoizedMatchesRegex bool
 
 	// For submatch based replacement, we will use the compiledRegex
 	// to store the compiled regex with submatch.
@@ -34,10 +37,19 @@ type MultiRegexp struct {
 	// For brute force method, we will use the compiledRegexList
 }
 
+type MultiRegexpStats struct {
+	numReplacements     int
+	numMatches          int
+	numMemoizedMatches  int
+	numMemoizedEntries  int
+	regexpMatchDuration time.Duration
+}
+
 func NewMultiRegexp() *MultiRegexp {
 	retVal := &MultiRegexp{}
 	retVal.algorithm = MultiRegexpAlgorithmOR
 	retVal.mustInitialize = true
+	retVal.mustRecompileMemoizedMatchesRegex = true
 	return retVal
 }
 
@@ -63,7 +75,7 @@ func (p *MultiRegexp) Memoize(memoize bool) {
 	if p.algorithm == MultiRegexpAlgorithmOR {
 		p.memoize = memoize
 	} else {
-		panic(fmt.Sprintf("Memize is only supported for OR algorithm, not %s", p.algorithm))
+		panic(fmt.Sprintf("Memoize is only supported for OR algorithm, not %s", p.algorithm))
 	}
 }
 
@@ -126,7 +138,7 @@ func (p *MultiRegexp) compileForBruteForce() {
 // 	fmt.Println("ToStrings:", len(p.toStrings))
 // }
 
-func (p *MultiRegexp) ReplaceAll(text []byte) []byte {
+func (p *MultiRegexp) ReplaceAll(text []byte) ([]byte, MultiRegexpStats) {
 	p.initializeIfNeeded()
 
 	switch p.algorithm {
@@ -140,9 +152,56 @@ func (p *MultiRegexp) ReplaceAll(text []byte) []byte {
 	panic(fmt.Sprintf("Unknown algorithm: %s", p.algorithm))
 }
 
-func (p *MultiRegexp) replaceAllUsingOR(text []byte) []byte {
+func (p *MultiRegexp) replaceAllUsingOR(text []byte) ([]byte, MultiRegexpStats) {
+	// If memoization is enabled, we will use the memoized matches.
+	var stats1 MultiRegexpStats
+	if p.memoize {
+		text, stats1 = p._replaceAllUsingOR(true, text)
+	}
+
+	retVal, stats2 := p._replaceAllUsingOR(false, text)
+	// In case we had any new matches that were memoized, then we need to recompile
+	// the memoized matches regex next time.
+	if p.memoize && stats2.numMatches > 0 {
+		p.mustRecompileMemoizedMatchesRegex = true
+	}
+
+	// Now that we have two stats, let us combine them.
+	stats := MultiRegexpStats{}
+	stats.numReplacements = stats1.numReplacements + stats2.numReplacements
+	stats.numMatches = stats1.numMatches + stats2.numMatches
+	stats.numMemoizedMatches = stats1.numMemoizedMatches + stats2.numMemoizedMatches
+	stats.regexpMatchDuration = stats1.regexpMatchDuration + stats2.regexpMatchDuration
+	stats.numMemoizedEntries = len(p.memoizedMatches)
+
+	return retVal, stats
+}
+
+func (p *MultiRegexp) _replaceAllUsingOR(useMemoizedMatchesRegex bool, text []byte) ([]byte, MultiRegexpStats) {
 	retVal := make([]byte, 0, len(text))
-	matches := p.compiledRegex.FindAllSubmatchIndex(text, -1)
+	stats := MultiRegexpStats{}
+
+	var compiledRegex *regexp.Regexp
+	if useMemoizedMatchesRegex && len(p.memoizedMatches) > 0 {
+		if p.mustRecompileMemoizedMatchesRegex {
+			keys := make([]string, 0, len(p.memoizedMatches))
+			for k := range p.memoizedMatches {
+				keys = append(keys, k)
+			}
+			p.compiledMemoizedMatchesRegex = regexp.MustCompile(strings.Join(keys, "|"))
+			p.mustRecompileMemoizedMatchesRegex = false
+		}
+		compiledRegex = p.compiledMemoizedMatchesRegex
+	} else {
+		compiledRegex = p.compiledRegex
+	}
+
+	startTime := time.Now()
+	matches := compiledRegex.FindAllSubmatchIndex(text, -1)
+	stats.regexpMatchDuration = time.Since(startTime)
+
+	stats.numMatches = len(matches)
+
 	// fmt.Println(re.NumSubexp())
 	lastIndex := 0
 	for _, match := range matches {
@@ -156,6 +215,8 @@ func (p *MultiRegexp) replaceAllUsingOR(text []byte) []byte {
 			if ok {
 				retVal = append(retVal, replacement...)
 				lastIndex = match[1]
+				stats.numMemoizedMatches++
+				stats.numReplacements++
 				continue
 			}
 		}
@@ -168,17 +229,24 @@ func (p *MultiRegexp) replaceAllUsingOR(text []byte) []byte {
 				if p.memoize {
 					p.memoizedMatches[string(text[match[0]:match[1]])] = replacement
 				}
+				stats.numReplacements++
 				break
 			}
 		}
 	}
 	retVal = append(retVal, text[lastIndex:]...)
-	return retVal
+	return retVal, stats
 }
 
-func (p *MultiRegexp) replaceAllUsingSubmatch(text []byte) []byte {
+func (p *MultiRegexp) replaceAllUsingSubmatch(text []byte) ([]byte, MultiRegexpStats) {
 	retVal := make([]byte, 0, len(text))
+	stats := MultiRegexpStats{}
+
+	startTime := time.Now()
 	matches := p.compiledRegex.FindAllSubmatchIndex(text, -1)
+	stats.regexpMatchDuration = time.Since(startTime)
+
+	stats.numMatches = len(matches)
 
 	lastIndex := 0
 	for _, match := range matches {
@@ -193,18 +261,25 @@ func (p *MultiRegexp) replaceAllUsingSubmatch(text []byte) []byte {
 			replacement := []byte(p.toStrings[(i-2)/2])
 			retVal = append(retVal, replacement...)
 			lastIndex = match[i+1]
+			stats.numReplacements++
 		}
 	}
 	retVal = append(retVal, text[lastIndex:]...)
-	return retVal
+	return retVal, stats
 }
 
-func (p *MultiRegexp) replaceAllUsingBruteForce(text []byte) []byte {
+func (p *MultiRegexp) replaceAllUsingBruteForce(text []byte) ([]byte, MultiRegexpStats) {
 	var retVal []byte
+	stats := MultiRegexpStats{}
 
 	for i := range p.compiledRegexList {
 		retVal = make([]byte, 0, len(text))
+
+		startTime := time.Now()
 		matches := p.compiledRegexList[i].FindAllSubmatchIndex(text, -1)
+		stats.regexpMatchDuration += time.Since(startTime)
+
+		stats.numMatches += len(matches)
 		replacement := []byte(p.toStrings[i])
 
 		lastIndex := 0
@@ -215,11 +290,12 @@ func (p *MultiRegexp) replaceAllUsingBruteForce(text []byte) []byte {
 			}
 			retVal = append(retVal, replacement...)
 			lastIndex = match[1]
+			stats.numReplacements++
 		}
 		retVal = append(retVal, text[lastIndex:]...)
 
 		text = retVal
 	}
 
-	return text
+	return text, stats
 }
